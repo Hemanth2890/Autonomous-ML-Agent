@@ -1,10 +1,10 @@
-# 🚀 Autonomous Multi-Agent AutoML System
+# Autonomous Multi-Agent AutoML System
 
 An imbalance-aware, multi-agent AutoML framework that intelligently selects and evaluates classification models using cross-validated macro-F1 optimization and LLM-driven reasoning.
 
 ---
 
-## 🧠 Overview
+## Overview
 
 This project implements a hybrid AutoML architecture that combines:
 
@@ -19,18 +19,18 @@ Instead of selecting models purely by accuracy, the system dynamically adapts to
 
 ---
 
-## 🏗 System Architecture
+## System Architecture
 
 The pipeline consists of:
 
-### 1️⃣ Preprocessing Engine
+### 1️. Preprocessing Engine
 - Automatic numeric & categorical handling
 - Missing value imputation
 - One-hot encoding
 - Feature scaling
 - Date parsing support
 
-### 2️⃣ Competing Model Agents
+### 2️. Competing Model Agents
 Each agent independently trains and evaluates:
 
 - Random Forest
@@ -46,7 +46,7 @@ Using:
 
 ---
 
-### 3️⃣ Intelligent Judge Agent
+### 3️. Intelligent Judge Agent
 
 A weighted scoring system selects the best model based on:
 
@@ -61,12 +61,12 @@ Additionally, an LLM generates structured reasoning explaining the selection.
 
 ---
 
-### 4️⃣ Hyperparameter Optimization
+### 4️. Hyperparameter Optimization
 GridSearchCV is applied to the selected model for fine-tuning.
 
 ---
 
-### 5️⃣ Honest Evaluation Strategy
+### 5️. Honest Evaluation Strategy
 
 All performance metrics are computed using:
 
@@ -80,7 +80,7 @@ No train-test leakage.
 
 ---
 
-## 📊 Dashboard Features
+## Dashboard Features
 
 The Streamlit frontend allows users to:
 
@@ -96,7 +96,7 @@ The Streamlit frontend allows users to:
 
 ---
 
-## 🧪 Evaluation Philosophy
+## Evaluation Philosophy
 
 This project emphasizes:
 
@@ -108,10 +108,11 @@ This project emphasizes:
 
 ---
 
-## ⚙️ Installation
+## Installation
 
 ```bash
 git clone https://github.com/Hemanth2890/Autonomous-ML-Agent.git
 cd Autonomous-ML-Agent
 pip install -r requirements.txt
 streamlit run frontend.py
+
