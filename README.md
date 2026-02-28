@@ -33,8 +33,9 @@ A hybrid AutoML system combining multiple ML models with LLM-based reasoning and
 ## Installation
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/Autonomous-ML-Agent.git
+git clone https://github.com/Hemanth2890/Autonomous-ML-Agent.git
 cd Autonomous-ML-Agent
 pip install -r requirements.txt
 
 streamlit run frontend.py
+
