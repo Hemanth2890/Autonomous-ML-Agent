@@ -1,6 +1,6 @@
 # Autonomous Multi-Agent AutoML System
 
-An intelligent, imbalance-aware AutoML framework that uses multiple ML agents to compete, evaluate, and select the best model using cross-validated macro-F1 scoring.
+A hybrid AutoML system combining multiple ML models with LLM-based reasoning and intelligent model selection.
 
 ---
 
@@ -36,4 +36,5 @@ An intelligent, imbalance-aware AutoML framework that uses multiple ML agents to
 git clone https://github.com/YOUR_USERNAME/Autonomous-ML-Agent.git
 cd Autonomous-ML-Agent
 pip install -r requirements.txt
+
 streamlit run frontend.py
