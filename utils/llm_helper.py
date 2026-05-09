@@ -5,11 +5,8 @@ import torch
 class LLMHelper:
 
     def __init__(self):
-        self.device = "cpu"
-
         self.tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-base")
         self.model = AutoModelForSeq2SeqLM.from_pretrained("google/flan-t5-base")
-        self.model.to(self.device)
 
     def generate(self, prompt, max_new_tokens=200):
 
