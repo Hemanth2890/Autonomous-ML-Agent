@@ -1,0 +1,43 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: automl
+      POSTGRES_PASSWORD: automl
+      POSTGRES_DB: automl
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  api:
+    build: .
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+psycopg2://automl:automl@postgres:5432/automl
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+      - postgres
+
+  worker:
+    build: .
+    command: celery -A tasks.celery_app.celery_app worker --loglevel=info
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+psycopg2://automl:automl@postgres:5432/automl
+    depends_on:
+      - redis
+      - postgres
+
+volumes:
+  pgdata:

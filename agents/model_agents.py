@@ -1,143 +1,101 @@
-from tools.model_tool import train_model
-from utils.llm_helper import LLMHelper
-import pandas as pd
+"""
+Competing model agents for the regression AutoML pipeline.
 
-from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.impute import SimpleImputer
+Each agent wraps a single regression model family, trains it with
+Stratified/KFold cross-validation, and reports back a structured
+proposal (cv RMSE mean/std, fit time, params) so the JudgeAgent can
+compare them on equal footing.
+"""
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass, field
+from typing import Any
+
+import numpy as np
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.linear_model import ElasticNet
+from sklearn.model_selection import KFold, cross_val_score
+from sklearn.metrics import mean_squared_error
+import lightgbm as lgb
+import xgboost as xgb
+
+MODEL_REGISTRY = {
+    "random_forest": lambda: RandomForestRegressor(
+        n_estimators=200, random_state=42, n_jobs=-1
+    ),
+    "gradient_boost": lambda: GradientBoostingRegressor(random_state=42),
+    "elastic_net": lambda: ElasticNet(alpha=0.5, l1_ratio=0.5, random_state=42),
+    "xgboost": lambda: xgb.XGBRegressor(
+        n_estimators=300, learning_rate=0.05, max_depth=6,
+        random_state=42, n_jobs=-1, verbosity=0,
+    ),
+    "lightgbm": lambda: lgb.LGBMRegressor(
+        n_estimators=300, learning_rate=0.05, random_state=42, verbosity=-1
+    ),
+}
+
+
+@dataclass
+class ModelProposal:
+    model_type: str
+    cv_rmse_mean: float
+    cv_rmse_std: float
+    fit_time_seconds: float
+    params: dict[str, Any] = field(default_factory=dict)
+    error: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "model_type": self.model_type,
+            "cv_rmse_mean": self.cv_rmse_mean,
+            "cv_rmse_std": self.cv_rmse_std,
+            "fit_time_seconds": self.fit_time_seconds,
+            "params": self.params,
+            "error": self.error,
+        }
 
 
 class BaseModelAgent:
+    """An agent responsible for one model family in the competition."""
 
-    def __init__(self, model_type):
+    def __init__(self, model_type: str, cv_folds: int = 5):
+        if model_type not in MODEL_REGISTRY:
+            raise ValueError(f"Unknown model_type '{model_type}'. "
+                              f"Options: {list(MODEL_REGISTRY)}")
         self.model_type = model_type
-        self.llm = LLMHelper()
+        self.cv_folds = cv_folds
 
-    def propose_and_train(self, df, target_column):
-
-        dataset_info = self._analyze_dataset(df, target_column)
-
+    def propose_and_train(self, X: np.ndarray, y: np.ndarray) -> ModelProposal:
+        start = time.time()
         try:
-            model, metrics = train_model(df.copy(), target_column, self.model_type)
-
-        except Exception as e:
-
-            print(f"[{self.model_type}] Training failed. Error:", str(e))
-            print(f"[{self.model_type}] Applying automatic preprocessing...")
-
-            df = df.copy()
-
-            # -----------------------------
-            # Separate target and features
-            # -----------------------------
-            y = df[target_column]
-            X = df.drop(columns=[target_column])
-
-            # -----------------------------
-            # Encode target if categorical
-            # -----------------------------
-            if y.dtype == "object":
-                le = LabelEncoder()
-                y = le.fit_transform(y)
-
-            # -----------------------------
-            # 🔥 Detect and convert DATE columns
-            # -----------------------------
-            for col in X.columns:
-                try:
-                    parsed = pd.to_datetime(X[col], errors="raise")
-                    X[col + "_year"] = parsed.dt.year
-                    X[col + "_month"] = parsed.dt.month
-                    X[col + "_day"] = parsed.dt.day
-                    X = X.drop(columns=[col])
-                except:
-                    pass
-
-            # -----------------------------
-            # Identify feature types again
-            # -----------------------------
-            categorical_cols = X.select_dtypes(include=["object"]).columns
-            numeric_cols = X.select_dtypes(exclude=["object"]).columns
-
-            # ===============================
-            # NUMERIC FEATURES
-            # ===============================
-            if len(numeric_cols) > 0:
-                num_imputer = SimpleImputer(strategy="mean")
-                X[numeric_cols] = num_imputer.fit_transform(X[numeric_cols])
-
-                scaler = StandardScaler()
-                X[numeric_cols] = scaler.fit_transform(X[numeric_cols])
-
-            # ===============================
-            # CATEGORICAL FEATURES
-            # ===============================
-            if len(categorical_cols) > 0:
-                cat_imputer = SimpleImputer(strategy="most_frequent")
-                X[categorical_cols] = cat_imputer.fit_transform(X[categorical_cols])
-
-                X = pd.get_dummies(X, columns=categorical_cols, drop_first=True)
-
-            # -----------------------------
-            # Final safety check
-            # -----------------------------
-            if X.isnull().sum().sum() > 0:
-                raise ValueError("NaN values remain after preprocessing.")
-
-            df_clean = pd.concat(
-                [pd.DataFrame(X), pd.Series(y, name=target_column)],
-                axis=1
+            model = MODEL_REGISTRY[self.model_type]()
+            kf = KFold(n_splits=self.cv_folds, shuffle=True, random_state=42)
+            neg_mse_scores = cross_val_score(
+                model, X, y, cv=kf, scoring="neg_mean_squared_error", n_jobs=-1
+            )
+            rmse_scores = np.sqrt(-neg_mse_scores)
+            elapsed = time.time() - start
+            return ModelProposal(
+                model_type=self.model_type,
+                cv_rmse_mean=float(rmse_scores.mean()),
+                cv_rmse_std=float(rmse_scores.std()),
+                fit_time_seconds=round(elapsed, 4),
+                params=model.get_params(),
+            )
+        except Exception as exc:  # noqa: BLE001
+            return ModelProposal(
+                model_type=self.model_type,
+                cv_rmse_mean=float("inf"),
+                cv_rmse_std=0.0,
+                fit_time_seconds=round(time.time() - start, 4),
+                error=str(exc),
             )
 
-            if df_clean.empty:
-                raise ValueError("Dataset became empty after preprocessing.")
-
-            print(f"[{self.model_type}] Retrying training...")
-
-            model, metrics = train_model(df_clean, target_column, self.model_type)
-
-        proposal = {
-            "model_type": self.model_type,
-            "metrics": metrics,
-            "dataset_analysis": dataset_info,
-            "argument": self._generate_argument(dataset_info, metrics)
-        }
-
-        return proposal
-
-    def _analyze_dataset(self, df, target_column):
-
-        return {
-            "num_samples": df.shape[0],
-            "num_features": df.shape[1] - 1,
-            "num_classes": df[target_column].nunique()
-        }
-
-    def _generate_argument(self, dataset_info, metrics):
-
-        prompt = f"""
-You are a senior machine learning engineer.
-
-IMPORTANT:
-- Only discuss the model: {self.model_type}.
-- Do not mention other algorithms.
-- Use only provided metrics.
-- Do not invent statistics.
-
-Dataset:
-Samples: {dataset_info['num_samples']}
-Features: {dataset_info['num_features']}
-Classes: {dataset_info['num_classes']}
-
-Performance:
-Accuracy Mean: {metrics['accuracy_mean']:.4f}
-Accuracy Std: {metrics['accuracy_std']:.4f}
-F1 Mean: {metrics['f1_mean']:.4f}
-Precision Mean: {metrics['precision_mean']:.4f}
-Recall Mean: {metrics['recall_mean']:.4f}
-
-Write exactly 3 professional sentences evaluating suitability.
-"""
-
-        response = self.llm.generate(prompt, max_new_tokens=120)
-
-        return response.strip()
+    def fit_full(self, X: np.ndarray, y: np.ndarray, params: dict | None = None):
+        """Fit the model on the full training data, optionally with overridden params."""
+        model = MODEL_REGISTRY[self.model_type]()
+        if params:
+            model.set_params(**{k: v for k, v in params.items() if k in model.get_params()})
+        model.fit(X, y)
+        return model
